@@ -7,8 +7,10 @@ import (
 )
 
 var (
-	LineLimitExceeded   = errors.New("maximum line length exceeded")
-	MessageSizeExceeded = errors.New("maximum message size exceeded")
+	// ErrLineLimitExceeded ...
+	ErrLineLimitExceeded = errors.New("maximum line length exceeded")
+	// ErrMessageSizeExceeded ...
+	ErrMessageSizeExceeded = errors.New("maximum message size exceeded")
 )
 
 // we need to adjust the limit, so we embed io.LimitedReader
@@ -27,7 +29,7 @@ func (alr *adjustableLimitedReader) Read(p []byte) (n int, err error) {
 	n, err = alr.R.Read(p)
 	if err == io.EOF && alr.R.N <= 0 {
 		// return our custom error since io.Reader returns EOF
-		err = LineLimitExceeded
+		err = ErrLineLimitExceeded
 	}
 	return
 }

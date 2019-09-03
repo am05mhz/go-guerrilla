@@ -3,11 +3,16 @@ package guerrilla
 import "time"
 
 var (
-	Version   string
-	Commit    string
+	// Version ...
+	Version string
+	// Commit ...
+	Commit string
+	// BuildTime ...
 	BuildTime string
 
-	StartTime      time.Time
+	// StartTime ...
+	StartTime time.Time
+	// ConfigLoadTime ...
 	ConfigLoadTime time.Time
 )
 

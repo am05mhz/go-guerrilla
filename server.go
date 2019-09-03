@@ -23,20 +23,22 @@ import (
 )
 
 const (
+	// CommandVerbMaxLength ...
 	CommandVerbMaxLength = 16
+	// CommandLineMaxLength ...
 	CommandLineMaxLength = 1024
-	// Number of allowed unrecognized commands before we terminate the connection
+	// MaxUnrecognizedCommands ... Number of allowed unrecognized commands before we terminate the connection
 	MaxUnrecognizedCommands = 5
 )
 
 const (
-	// server has just been created
+	// ServerStateNew ... server has just been created
 	ServerStateNew = iota
-	// Server has just been stopped
+	// ServerStateStopped ... Server has just been stopped
 	ServerStateStopped
-	// Server has been started and is running
+	// ServerStateRunning ... Server has been started and is running
 	ServerStateRunning
-	// Server could not start due to an error
+	// ServerStateStartError ... Server could not start due to an error
 	ServerStateStartError
 )
 
@@ -103,12 +105,12 @@ func newServer(sc *ServerConfig, b backends.Backend, mainlog log.Logger) (*serve
 		server.log().Info("server [" + sc.ListenInterface + "] did not configure a separate log file, so using the main log")
 	} else {
 		// set level to same level as mainlog level
-		if l, logOpenError := log.GetLogger(sc.LogFile, server.mainlog().GetLevel()); logOpenError != nil {
+		l, logOpenError := log.GetLogger(sc.LogFile, server.mainlog().GetLevel())
+		if logOpenError != nil {
 			server.log().WithError(logOpenError).Errorf("Failed creating a logger for server [%s]", sc.ListenInterface)
 			return server, logOpenError
-		} else {
-			server.logStore.Store(l)
 		}
+		server.logStore.Store(l)
 	}
 	server.setConfig(sc)
 	server.setTimeout(sc.Timeout)
@@ -259,7 +261,7 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 			continue
 		}
 		go func(p Poolable, borrowErr error) {
-			c := p.(*client)
+			c := p.(*Client)
 			if borrowErr == nil {
 				s.handleClient(c)
 				s.envelopePool.Return(c.Envelope)
@@ -323,7 +325,7 @@ const commandSuffix = "\r\n"
 
 // Reads from the client until a \n terminator is encountered,
 // or until a timeout occurs.
-func (s *server) readCommand(client *client) ([]byte, error) {
+func (s *server) readCommand(client *Client) ([]byte, error) {
 	//var input string
 	var err error
 	var bs []byte
@@ -338,7 +340,7 @@ func (s *server) readCommand(client *client) ([]byte, error) {
 }
 
 // flushResponse a response to the client. Flushes the client.bufout buffer to the connection
-func (s *server) flushResponse(client *client) error {
+func (s *server) flushResponse(client *Client) error {
 	if err := client.setTimeout(s.timeout.Load().(time.Duration)); err != nil {
 		return err
 	}
@@ -350,7 +352,7 @@ func (s *server) isShuttingDown() bool {
 }
 
 // Handles an entire client SMTP exchange
-func (s *server) handleClient(client *client) {
+func (s *server) handleClient(client *Client) {
 	defer client.closeConn()
 	sc := s.configStore.Load().(ServerConfig)
 	s.log().Infof("Handle client [%s], id: %d", client.RemoteIP, client.ID)
@@ -405,7 +407,7 @@ func (s *server) handleClient(client *client) {
 			} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				s.log().WithError(err).Warnf("Timeout: %s", client.RemoteIP)
 				return
-			} else if err == LineLimitExceeded {
+			} else if err == ErrLineLimitExceeded {
 				client.sendResponse(r.FailLineTooLong)
 				client.kill()
 				break
@@ -549,11 +551,11 @@ func (s *server) handleClient(client *client) {
 				err = fmt.Errorf("maximum DATA size exceeded (%d)", sc.MaxSize)
 			}
 			if err != nil {
-				if err == LineLimitExceeded {
-					client.sendResponse(r.FailReadLimitExceededDataCmd, " ", LineLimitExceeded.Error())
+				if err == ErrLineLimitExceeded {
+					client.sendResponse(r.FailReadLimitExceededDataCmd, " ", ErrLineLimitExceeded.Error())
 					client.kill()
-				} else if err == MessageSizeExceeded {
-					client.sendResponse(r.FailMessageSizeExceeded, " ", MessageSizeExceeded.Error())
+				} else if err == ErrMessageSizeExceeded {
+					client.sendResponse(r.FailMessageSizeExceeded, " ", ErrMessageSizeExceeded.Error())
 					client.kill()
 				} else {
 					client.sendResponse(r.FailReadErrorDataCmd, " ", err.Error())

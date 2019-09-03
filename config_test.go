@@ -1,20 +1,21 @@
 package guerrilla
 
 import (
-	"github.com/am05mhz/go-guerrilla/backends"
-	"github.com/am05mhz/go-guerrilla/log"
-	"github.com/am05mhz/go-guerrilla/tests/testcert"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/am05mhz/go-guerrilla/backends"
+	"github.com/am05mhz/go-guerrilla/log"
+	"github.com/am05mhz/go-guerrilla/tests/testcert"
 )
 
 // a configuration file with a dummy backend
 
 //
-var configJsonA = `
+var configJSONA = `
 {
     "log_file" : "./tests/testlog",
     "log_level" : "debug",
@@ -91,7 +92,7 @@ var configJsonA = `
 // A's 127.0.0.1:3333 is disabled
 // B's 127.0.0.1:9999 is removed
 
-var configJsonB = `
+var configJSONB = `
 {
     "log_file" : "./tests/testlog",
     "log_level" : "debug",
@@ -179,7 +180,7 @@ func TestConfigLoad(t *testing.T) {
 	}()
 
 	ac := &AppConfig{}
-	if err := ac.Load([]byte(configJsonA)); err != nil {
+	if err := ac.Load([]byte(configJSONA)); err != nil {
 		t.Error("Cannot load config |", err)
 		t.SkipNow()
 	}
@@ -226,7 +227,7 @@ func TestConfigChangeEvents(t *testing.T) {
 	}()
 
 	oldconf := &AppConfig{}
-	if err := oldconf.Load([]byte(configJsonA)); err != nil {
+	if err := oldconf.Load([]byte(configJSONA)); err != nil {
 		t.Error(err)
 	}
 	logger, _ := log.GetLogger(oldconf.LogFile, oldconf.LogLevel)
@@ -249,7 +250,7 @@ func TestConfigChangeEvents(t *testing.T) {
 		t.Error(err)
 	}
 	newconf := &AppConfig{}
-	if err := newconf.Load([]byte(configJsonB)); err != nil {
+	if err := newconf.Load([]byte(configJSONB)); err != nil {
 		t.Error(err)
 	}
 	newconf.Servers[0].LogFile = log.OutputOff.String() // test for log file change

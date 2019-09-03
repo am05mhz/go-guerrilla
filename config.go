@@ -60,6 +60,7 @@ type ServerConfig struct {
 	XClientOn bool `json:"xclient_on,omitempty"`
 }
 
+// ServerTLSConfig ...
 type ServerTLSConfig struct {
 	// TLS Protocols to use. [0] = min, [1]max
 	// Use Go's default if empty
@@ -93,9 +94,9 @@ type ServerTLSConfig struct {
 	AlwaysOn bool `json:"tls_always_on,omitempty"`
 }
 
-// https://golang.org/pkg/crypto/tls/#pkg-constants
-// Ciphers introduced before Go 1.7 are listed here,
+// TLSCiphers ... Ciphers introduced before Go 1.7 are listed here,
 // ciphers since Go 1.8, see tls_go1.8.go
+// https://golang.org/pkg/crypto/tls/#pkg-constants
 var TLSCiphers = map[string]uint16{
 
 	// // Note: Generally avoid using CBC unless for compatibility
@@ -122,6 +123,7 @@ var TLSCiphers = map[string]uint16{
 	"TLS_FALLBACK_SCSV": tls.TLS_FALLBACK_SCSV,
 }
 
+// TLSProtocols ...
 // https://golang.org/pkg/crypto/tls/#pkg-constants
 var TLSProtocols = map[string]uint16{
 	"ssl3.0": tls.VersionSSL30,
@@ -130,6 +132,7 @@ var TLSProtocols = map[string]uint16{
 	"tls1.2": tls.VersionTLS12,
 }
 
+// TLSCurves ...
 // https://golang.org/pkg/crypto/tls/#CurveID
 var TLSCurves = map[string]tls.CurveID{
 	"P256": tls.CurveP256,
@@ -137,6 +140,7 @@ var TLSCurves = map[string]tls.CurveID{
 	"P521": tls.CurveP521,
 }
 
+// TLSClientAuthTypes ...
 // https://golang.org/pkg/crypto/tls/#ClientAuthType
 var TLSClientAuthTypes = map[string]tls.ClientAuthType{
 	"NoClientCert":               tls.NoClientCert,
@@ -151,7 +155,7 @@ const defaultTimeout = 30
 const defaultInterface = "127.0.0.1:2525"
 const defaultMaxSize = int64(10 << 20) // 10 Mebibytes
 
-// Unmarshalls json data into AppConfig struct and any other initialization of the struct
+// Load ... Unmarshalls json data into AppConfig struct and any other initialization of the struct
 // also does validation, returns error if validation failed or something went wrong
 func (c *AppConfig) Load(jsonBytes []byte) error {
 	err := json.Unmarshal(jsonBytes, c)
@@ -174,14 +178,14 @@ func (c *AppConfig) Load(jsonBytes []byte) error {
 
 	// read the timestamps for the ssl keys, to determine if they need to be reloaded
 	for i := 0; i < len(c.Servers); i++ {
-		if err := c.Servers[i].loadTlsKeyTimestamps(); err != nil {
+		if err := c.Servers[i].loadTLSKeyTimestamps(); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Emits any configuration change events onto the event bus.
+// EmitChangeEvents ... Emits any configuration change events onto the event bus.
 func (c *AppConfig) EmitChangeEvents(oldConfig *AppConfig, app Guerrilla) {
 	// has backend changed?
 	if !reflect.DeepEqual((*c).BackendConfig, (*oldConfig).BackendConfig) {
@@ -228,7 +232,7 @@ func (c *AppConfig) EmitChangeEvents(oldConfig *AppConfig, app Guerrilla) {
 	}
 }
 
-// EmitLogReopen emits log reopen events using existing config
+// EmitLogReopenEvents ... EmitLogReopen emits log reopen events using existing config
 func (c *AppConfig) EmitLogReopenEvents(app Guerrilla) {
 	app.Publish(EventConfigLogReopen, c)
 	for _, sc := range c.getServers() {
@@ -264,11 +268,11 @@ func (c *AppConfig) setDefaults() error {
 		c.LogLevel = "debug"
 	}
 	if len(c.AllowedHosts) == 0 {
-		if h, err := os.Hostname(); err != nil {
+		h, err := os.Hostname()
+		if err != nil {
 			return err
-		} else {
-			c.AllowedHosts = append(c.AllowedHosts, h)
 		}
+		c.AllowedHosts = append(c.AllowedHosts, h)
 	}
 	h, err := os.Hostname()
 	if err != nil {
@@ -403,7 +407,7 @@ func (sc *ServerConfig) emitChangeEvents(oldServer *ServerConfig, app Guerrilla)
 }
 
 // Loads in timestamps for the ssl keys
-func (sc *ServerConfig) loadTlsKeyTimestamps() error {
+func (sc *ServerConfig) loadTLSKeyTimestamps() error {
 	var statErr = func(iface string, err error) error {
 		return fmt.Errorf(
 			"could not stat key for server [%s], %s",
@@ -455,7 +459,7 @@ func (sc *ServerConfig) Validate() error {
 
 // Gets the timestamp of the TLS certificates. Returns a unix time of when they were last modified
 // when the config was read. We use this info to determine if TLS needs to be re-loaded.
-func (stc *ServerTLSConfig) getTlsKeyTimestamps() (int64, int64) {
+func (stc *ServerTLSConfig) getTLSKeyTimestamps() (int64, int64) {
 	return stc._privateKeyFileMtime, stc._publicKeyFileMtime
 }
 
@@ -481,9 +485,9 @@ func getChanges(a interface{}, b interface{}) map[string]interface{} {
 	}
 	// detect changes to TLS keys (have the key files been modified?)
 	if oldTLS, ok := a.(ServerTLSConfig); ok {
-		t1, t2 := oldTLS.getTlsKeyTimestamps()
+		t1, t2 := oldTLS.getTLSKeyTimestamps()
 		if newTLS, ok := b.(ServerTLSConfig); ok {
-			t3, t4 := newTLS.getTlsKeyTimestamps()
+			t3, t4 := newTLS.getTLSKeyTimestamps()
 			if t1 != t3 {
 				ret["PrivateKeyFile"] = newTLS.PrivateKeyFile
 			}

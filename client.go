@@ -21,19 +21,20 @@ import (
 type ClientState int
 
 const (
-	// The client has connected, and is awaiting our first response
+	// ClientGreeting ... the client has connected, and is awaiting our first response
 	ClientGreeting = iota
-	// We have responded to the client's connection and are awaiting a command
+	// ClientCmd ... we have responded to the client's connection and are awaiting a command
 	ClientCmd
-	// We have received the sender and recipient information
+	// ClientData ... we have received the sender and recipient information
 	ClientData
-	// We have agreed with the client to secure the connection over TLS
+	// ClientStartTLS ... we have agreed with the client to secure the connection over TLS
 	ClientStartTLS
-	// Server will shutdown, client to shutdown on next command turn
+	// ClientShutdown ... server will shutdown, client to shutdown on next command turn
 	ClientShutdown
 )
 
-type client struct {
+// Client ...
+type Client struct {
 	*mail.Envelope
 	ID          uint64
 	ConnectedAt time.Time
@@ -57,8 +58,8 @@ type client struct {
 }
 
 // NewClient allocates a new client.
-func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail.Pool) *client {
-	c := &client{
+func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail.Pool) *Client {
+	c := &Client{
 		conn: conn,
 		// Envelope will be borrowed from the envelope pool
 		// the envelope could be 'detached' from the client later when processing
@@ -77,7 +78,7 @@ func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail
 
 // sendResponse adds a response to be written on the next turn
 // the response gets buffered
-func (c *client) sendResponse(r ...interface{}) {
+func (c *Client) sendResponse(r ...interface{}) {
 	c.bufout.Reset(c.conn)
 	if c.log.IsDebug() {
 		// an additional buffer so that we can log the response in debug mode only
@@ -117,14 +118,14 @@ func (c *client) sendResponse(r ...interface{}) {
 // -HELO/EHLO/REST command
 // -End of DATA command
 // TLS handshake
-func (c *client) resetTransaction() {
+func (c *Client) resetTransaction() {
 	c.Envelope.ResetTransaction()
 }
 
 // isInTransaction returns true if the connection is inside a transaction.
 // A transaction starts after a MAIL command gets issued by the client.
 // Call resetTransaction to end the transaction
-func (c *client) isInTransaction() bool {
+func (c *Client) isInTransaction() bool {
 	if len(c.MailFrom.User) == 0 && !c.MailFrom.NullPath {
 		return false
 	}
@@ -132,17 +133,17 @@ func (c *client) isInTransaction() bool {
 }
 
 // kill flags the connection to close on the next turn
-func (c *client) kill() {
+func (c *Client) kill() {
 	c.KilledAt = time.Now()
 }
 
 // isAlive returns true if the client is to close on the next turn
-func (c *client) isAlive() bool {
+func (c *Client) isAlive() bool {
 	return c.KilledAt.IsZero()
 }
 
 // setTimeout adjust the timeout on the connection, goroutine safe
-func (c *client) setTimeout(t time.Duration) (err error) {
+func (c *Client) setTimeout(t time.Duration) (err error) {
 	defer c.connGuard.Unlock()
 	c.connGuard.Lock()
 	if c.conn != nil {
@@ -152,7 +153,7 @@ func (c *client) setTimeout(t time.Duration) (err error) {
 }
 
 // closeConn closes a client connection, , goroutine safe
-func (c *client) closeConn() {
+func (c *Client) closeConn() {
 	defer c.connGuard.Unlock()
 	c.connGuard.Lock()
 	_ = c.conn.Close()
@@ -160,7 +161,7 @@ func (c *client) closeConn() {
 }
 
 // init is called after the client is borrowed from the pool, to get it ready for the connection
-func (c *client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
+func (c *Client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
 	c.conn = conn
 	// reset our reader & writer
 	c.bufout.Reset(conn)
@@ -176,12 +177,12 @@ func (c *client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
 }
 
 // getID returns the client's unique ID
-func (c *client) getID() uint64 {
+func (c *Client) getID() uint64 {
 	return c.ID
 }
 
 // UpgradeToTLS upgrades a client connection to TLS
-func (c *client) upgradeToTLS(tlsConfig *tls.Config) error {
+func (c *Client) upgradeToTLS(tlsConfig *tls.Config) error {
 	// wrap c.conn in a new TLS server side connection
 	tlsConn := tls.Server(c.conn, tlsConfig)
 	// Call handshake here to get any handshake error before reading starts
@@ -201,14 +202,13 @@ func getRemoteAddr(conn net.Conn) string {
 	if addr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
 		// we just want the IP (not the port)
 		return addr.IP.String()
-	} else {
-		return conn.RemoteAddr().Network()
 	}
+	return conn.RemoteAddr().Network()
 }
 
 type pathParser func([]byte) error
 
-func (c *client) parsePath(in []byte, p pathParser) (mail.Address, error) {
+func (c *Client) parsePath(in []byte, p pathParser) (mail.Address, error) {
 	address := mail.Address{}
 	var err error
 	if len(in) > rfc5321.LimitPath {

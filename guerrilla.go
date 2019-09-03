@@ -20,6 +20,7 @@ const (
 	daemonStateStopped
 )
 
+// Errors ...
 type Errors []error
 
 // implement the Error interface
@@ -35,6 +36,7 @@ func (e Errors) Error() string {
 	return msg
 }
 
+// Guerrilla ...
 type Guerrilla interface {
 	Start() error
 	Shutdown()
@@ -80,7 +82,7 @@ func (ls *logStore) setMainlog(log log.Logger) {
 	ls.Store(log)
 }
 
-// Returns a new instance of Guerrilla with the given config, not yet running. Backend started.
+// New ... Returns a new instance of Guerrilla with the given config, not yet running. Backend started.
 func New(ac *AppConfig, b backends.Backend, l log.Logger) (Guerrilla, error) {
 	g := &guerrilla{
 		Config:  *ac, // take a local copy
