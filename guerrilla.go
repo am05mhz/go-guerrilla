@@ -65,8 +65,14 @@ type backendStore struct {
 	atomic.Value
 }
 
-type daemonEvent func(c *AppConfig)
-type serverEvent func(sc *ServerConfig)
+// DaemonEvent ...
+type DaemonEvent func(c *AppConfig)
+
+// ServerEvent ...
+type ServerEvent func(sc *ServerConfig)
+
+// MessageEvent ...
+type MessageEvent func(body string)
 
 // Get loads the log.logger in an atomic operation. Returns a stderr logger if not able to load
 func (ls *logStore) mainlog() log.Logger {
@@ -135,7 +141,7 @@ func (g *guerrilla) makeServers() error {
 			continue
 		} else {
 			sc := sc // pin!
-			server, err := newServer(&sc, g.backend(), g.mainlog())
+			server, err := newServer(&sc, g.backend(), g.mainlog(), g)
 			if err != nil {
 				g.mainlog().WithError(err).Errorf("Failed to create server [%s]", sc.ListenInterface)
 				errs = append(errs, err)
@@ -204,11 +210,11 @@ func (g *guerrilla) subscribeEvents() {
 
 	events := map[Event]interface{}{}
 	// main config changed
-	events[EventConfigNewConfig] = daemonEvent(func(c *AppConfig) {
+	events[EventConfigNewConfig] = DaemonEvent(func(c *AppConfig) {
 		g.setConfig(c)
 	})
 	// allowed_hosts changed, set for all servers
-	events[EventConfigAllowedHosts] = daemonEvent(func(c *AppConfig) {
+	events[EventConfigAllowedHosts] = DaemonEvent(func(c *AppConfig) {
 		g.mapServers(func(server *server) {
 			server.setAllowedHosts(c.AllowedHosts)
 		})
@@ -216,7 +222,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// the main log file changed
-	events[EventConfigLogFile] = daemonEvent(func(c *AppConfig) {
+	events[EventConfigLogFile] = DaemonEvent(func(c *AppConfig) {
 		var err error
 		var l log.Logger
 		if l, err = log.GetLogger(c.LogFile, c.LogLevel); err == nil {
@@ -233,7 +239,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// re-open the main log file (file not changed)
-	events[EventConfigLogReopen] = daemonEvent(func(c *AppConfig) {
+	events[EventConfigLogReopen] = DaemonEvent(func(c *AppConfig) {
 		err := g.mainlog().Reopen()
 		if err != nil {
 			g.mainlog().WithError(err).Errorf("main log file [%s] failed to re-open", c.LogFile)
@@ -243,7 +249,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// when log level changes, apply to mainlog and server logs
-	events[EventConfigLogLevel] = daemonEvent(func(c *AppConfig) {
+	events[EventConfigLogLevel] = DaemonEvent(func(c *AppConfig) {
 		l, err := log.GetLogger(g.mainlog().GetLogDest(), c.LogLevel)
 		if err == nil {
 			g.logStore.Store(l)
@@ -255,18 +261,18 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// write out our pid whenever the file name changes in the config
-	events[EventConfigPidFile] = daemonEvent(func(ac *AppConfig) {
+	events[EventConfigPidFile] = DaemonEvent(func(ac *AppConfig) {
 		_ = g.writePid()
 	})
 
 	// server config was updated
-	events[EventConfigServerConfig] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerConfig] = ServerEvent(func(sc *ServerConfig) {
 		g.setServerConfig(sc)
 		g.mainlog().Infof("server %s config change event, a new config has been saved", sc.ListenInterface)
 	})
 
 	// add a new server to the config & start
-	events[EventConfigServerNew] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerNew] = ServerEvent(func(sc *ServerConfig) {
 		g.mainlog().Debugf("event fired [%s] %s", EventConfigServerNew, sc.ListenInterface)
 		if _, err := g.findServer(sc.ListenInterface); err != nil {
 			// not found, lets add it
@@ -288,7 +294,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// start a server that already exists in the config and has been enabled
-	events[EventConfigServerStart] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerStart] = ServerEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
 			if server.state == ServerStateStopped || server.state == ServerStateNew {
 				g.mainlog().Infof("Starting server [%s]", server.listenInterface)
@@ -301,7 +307,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// stop running a server
-	events[EventConfigServerStop] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerStop] = ServerEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
 			if server.state == ServerStateRunning {
 				server.Shutdown()
@@ -311,7 +317,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// server was removed from config
-	events[EventConfigServerRemove] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerRemove] = ServerEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
 			server.Shutdown()
 			g.removeServer(sc.ListenInterface)
@@ -320,7 +326,7 @@ func (g *guerrilla) subscribeEvents() {
 	})
 
 	// TLS changes
-	events[EventConfigServerTLSConfig] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerTLSConfig] = ServerEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
 			if err := server.configureSSL(); err == nil {
 				g.mainlog().Infof("Server [%s] new TLS configuration loaded", sc.ListenInterface)
@@ -330,19 +336,19 @@ func (g *guerrilla) subscribeEvents() {
 		}
 	})
 	// when server's timeout change.
-	events[EventConfigServerTimeout] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerTimeout] = ServerEvent(func(sc *ServerConfig) {
 		g.mapServers(func(server *server) {
 			server.setTimeout(sc.Timeout)
 		})
 	})
 	// when server's max clients change.
-	events[EventConfigServerMaxClients] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerMaxClients] = ServerEvent(func(sc *ServerConfig) {
 		g.mapServers(func(server *server) {
 			// TODO resize the pool somehow
 		})
 	})
 	// when a server's log file changes
-	events[EventConfigServerLogFile] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerLogFile] = ServerEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
 			var err error
 			var l log.Logger
@@ -366,7 +372,7 @@ func (g *guerrilla) subscribeEvents() {
 		}
 	})
 	// when the daemon caught a sighup, event for individual server
-	events[EventConfigServerLogReopen] = serverEvent(func(sc *ServerConfig) {
+	events[EventConfigServerLogReopen] = ServerEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
 			if err = server.log().Reopen(); err != nil {
 				g.mainlog().WithError(err).Errorf("server [%s] log file [%s] failed to re-open", sc.ListenInterface, sc.LogFile)
@@ -376,7 +382,7 @@ func (g *guerrilla) subscribeEvents() {
 		}
 	})
 	// when the backend changes
-	events[EventConfigBackendConfig] = daemonEvent(func(appConfig *AppConfig) {
+	events[EventConfigBackendConfig] = DaemonEvent(func(appConfig *AppConfig) {
 		logger, _ := log.GetLogger(appConfig.LogFile, appConfig.LogLevel)
 		// shutdown the backend first.
 		var err error
@@ -410,9 +416,9 @@ func (g *guerrilla) subscribeEvents() {
 	var err error
 	for topic, fn := range events {
 		switch f := fn.(type) {
-		case daemonEvent:
+		case DaemonEvent:
 			err = g.Subscribe(topic, f)
-		case serverEvent:
+		case ServerEvent:
 			err = g.Subscribe(topic, f)
 		}
 		if err != nil {

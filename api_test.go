@@ -370,7 +370,7 @@ func TestSetConfig(t *testing.T) {
 		t.Error("could not read logfile")
 		return
 	}
-	//fmt.Println(string(b))
+	// fmt.Println(string(b))
 	// has 127.0.0.1:2527 started?
 	if !strings.Contains(string(b), "127.0.0.1:2527") {
 		t.Error("expecting 127.0.0.1:2527 to start")

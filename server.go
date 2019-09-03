@@ -58,6 +58,7 @@ type server struct {
 	logStore     atomic.Value
 	mainlogStore atomic.Value
 	backendStore atomic.Value
+	appStore     atomic.Value
 	envelopePool *mail.Pool
 }
 
@@ -89,7 +90,7 @@ func (c command) match(in []byte) bool {
 }
 
 // Creates and returns a new ready-to-run Server from a ServerConfig configuration
-func newServer(sc *ServerConfig, b backends.Backend, mainlog log.Logger) (*server, error) {
+func newServer(sc *ServerConfig, b backends.Backend, mainlog log.Logger, app Guerrilla) (*server, error) {
 	server := &server{
 		clientPool:      NewPool(sc.MaxClients),
 		closedListener:  make(chan bool, 1),
@@ -99,6 +100,7 @@ func newServer(sc *ServerConfig, b backends.Backend, mainlog log.Logger) (*serve
 	}
 	server.mainlogStore.Store(mainlog)
 	server.backendStore.Store(b)
+	server.appStore.Store(app)
 	if sc.LogFile == "" {
 		// none set, use the mainlog for the server log
 		server.logStore.Store(mainlog)
@@ -566,6 +568,9 @@ func (s *server) handleClient(client *Client) {
 				break
 			}
 
+			// s.log().Infoln(client.Data.String())
+			s.app().Publish(EventMessageGetData, client.Data.String())
+
 			res := s.backend().Process(client.Envelope)
 			if res.Code() < 300 {
 				client.messagesSent++
@@ -643,4 +648,15 @@ func (s *server) loadLog(value *atomic.Value) log.Logger {
 		value.Store(l)
 	}
 	return l
+}
+
+func (s *server) app() Guerrilla {
+	return s.loadApp(&s.appStore)
+}
+
+func (s *server) loadApp(value *atomic.Value) Guerrilla {
+	if l, ok := value.Load().(Guerrilla); ok {
+		return l
+	}
+	return nil
 }

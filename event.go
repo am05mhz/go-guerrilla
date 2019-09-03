@@ -42,6 +42,8 @@ const (
 	EventConfigServerMaxClients
 	// EventConfigServerTLSConfig ... when a server's TLS config changed
 	EventConfigServerTLSConfig
+	// EventMessageGetData ... when a server receive data
+	EventMessageGetData
 )
 
 var eventList = [...]string{
@@ -62,6 +64,7 @@ var eventList = [...]string{
 	"server_change:timeout",
 	"server_change:max_clients",
 	"server_change:tls_config",
+	"message_accept:get_data",
 }
 
 func (e Event) String() string {

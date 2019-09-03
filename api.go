@@ -87,7 +87,7 @@ func (d *Daemon) Shutdown() {
 }
 
 // LoadConfig reads in the config from a JSON file.
-// Note: if d.Config is nil, the sets d.Config with the unmarshalled AppConfig which will be returned
+// Note: if d.Config is nil, then sets d.Config with the unmarshalled AppConfig which will be returned
 func (d *Daemon) LoadConfig(path string) (AppConfig, error) {
 	var ac AppConfig
 	data, err := ioutil.ReadFile(path)
