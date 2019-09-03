@@ -1,7 +1,7 @@
 package encoding
 
 import (
-	"github.com/flashmob/go-guerrilla/mail"
+	"github.com/am05mhz/go-guerrilla/mail"
 	"strings"
 	"testing"
 )
